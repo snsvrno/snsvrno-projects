@@ -29,10 +29,14 @@ export default class SnsvrnoProjects extends Plugin {
 		this.addSettingTab(new SnsvrnoProjectsSettingTab(this.app, this));
 
 		this.registerEvent(app.workspace.on('file-open', (file) => {
+			// we start off by hiding the element
+			this.statusBarElement.hide();
+
 			if (!file) return;
 
 			var frontMatter = this.getProjectFrontMatter(file.parent.path);
 			if (frontMatter != null) {
+				this.statusBarElement.show();
 				this.buildStatusBarText(frontMatter);
 			}
 		}));
