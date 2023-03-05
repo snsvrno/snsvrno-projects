@@ -1,84 +1,96 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, setIcon, Plugin, TFile } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
+// import { RelationSettings} from './ds/Relation';
+import { SnsvrnoRelationsSettings, DEFAULT_SETTINGS } from './ds/SnsvrnoRelationsSettings';
+import { SnsvrnoRelationsSettingTab } from './Settings';
+import { RelationSettings } from './ds/Relation';
+import { RelationFile } from './ds/RelationFile';
+import { StatusBehavior, statusBehaviorOpenFile, statusBehaviorHighlightFile } from './ds/StatusBehavior';
 
-interface SnsvrnoProjectsSettings {
-	frontmatterKey: string;
-	frontmatterValue: string;
-	statusBarFormat: string;
-	statusBarBehavior: string;
-}
-
-const DEFAULT_SETTINGS: SnsvrnoProjectsSettings = {
-	frontmatterValue: 'value',
-	frontmatterKey: 'key',
-	statusBarFormat: '',
-	statusBarBehavior: 'None',
-}
-
-export default class SnsvrnoProjects extends Plugin {
-	settings: SnsvrnoProjectsSettings;
+export default class SnsvrnoRelations extends Plugin {
+	settings: SnsvrnoRelationsSettings;
 	statusBarElement: HTMLElement;
+	statusBarElements: Map<RelationSettings,HTMLElement>;
+	// files that share the same path, so we don't have
+	// to search again for ever relation.
+	fileOfInterest: Array<TFile>;
 
 	async onload() {
 		await this.loadSettings();
 
-		this.statusBarElement = this.addStatusBarItem();
-
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SnsvrnoProjectsSettingTab(this.app, this));
+		this.addSettingTab(new SnsvrnoRelationsSettingTab(this.app, this));
 
+		this.fileOfInterest = [ ];
+		this.statusBarElement = this.addStatusBarItem();
+		this.statusBarElement.removeClass("status-bar-item");
+		this.statusBarElements = new Map();
 		this.registerEvent(app.workspace.on('file-open', (file) => {
 			// we start off by hiding the element
-			this.statusBarElement.hide();
+			this.statusBarElements.forEach((el,_relation,_map) => el.hide());
+			//this.statusBarElement.hide();
 
-			if (!file) return;
+			if (!file || this.settings.relations.length == 0) return;
 
-			var frontMatter = this.getProjectFrontMatter(file.parent.path);
-			if (frontMatter != null) {
-				this.statusBarElement.show();
-				this.buildStatusBarText(frontMatter);
-			}
+			this.sortStatusBar();
+
+			// gets the files of interest
+			// filters down the files to only those that share paths.
+			while (this.fileOfInterest.length > 0) this.fileOfInterest.pop(); // drains it
+			app.vault.getFiles().forEach((f) => { if(f.parent.path == file.parent.path.substring(0,f.parent.path.length)) this.fileOfInterest.push(f); });
+
+
+			this.settings.relations.forEach((relation) => {
+				var data = this.getMatchingFrontmatter(relation, file.parent.path);
+				if (data != null) {
+					var el = this.statusBarElements.get(relation);
+					if (el == null) {
+						el = createEl("div");
+						el.addClass("status-bar-item");
+						this.statusBarElement.appendChild(el);
+						this.statusBarElements.set(relation, el);
+					}
+					this.buildStatusBarText(el, data, relation);
+				}
+			});
+
 		}));
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
 	}
 
-	/**
-	 * gets the front matter for the project, if one is found
-	 * otherwise returns null
-	 */
-	getProjectFrontMatter(path : string) {
-		// filters down the files to only those that share paths.
-		var files = app.vault.getFiles().filter((f) => {
-			return f.parent.path == path.substring(0,f.parent.path.length);
-		});
+	sortStatusBar() {
+		if (this.statusBarElement.children.length == 1) return;
 
-		// now we work up the path tree
+		this.statusBarElements.forEach((v,_rel,_m) => this.statusBarElement.removeChild(v));
+		this.statusBarElements.forEach((v,_rel,_m) => this.statusBarElement.appendChild(v));
+	}
+
+	getMatchingFrontmatter(relation : RelationSettings, path : string) : RelationFile | null {
+
 		var parts = path.split("/");
 		while (parts.length > 0) {
 			var subPath = parts.join("/");
-			for (let i = 0; i < files.length; i++) {
+			for (let i = 0; i < this.fileOfInterest.length; i++) {
 				// checks if we are in the same folder
-				if (files[i].parent.path == subPath) {
-					var metadata = app.metadataCache.getFileCache(files[i]);
-					if (metadata?.frontmatter && metadata.frontmatter[this.settings.frontmatterKey] == this.settings.frontmatterValue) {
-						return { frontmatter: metadata.frontmatter, file: files[i] };
+				if (this.fileOfInterest[i].parent.path == subPath) {
+					var metadata = app.metadataCache.getFileCache(this.fileOfInterest[i]);
+					if (metadata?.frontmatter && metadata.frontmatter[relation.frontmatterKey] == relation.frontmatterValue) {
+						return { frontmatter: metadata.frontmatter, file: this.fileOfInterest[i] };
 					}
 				}
 			}
 			parts.pop();
 		}
 
+		return null;
 	}
 
-	/**
-	 * creates the statusbar text
-	 */
-	buildStatusBarText(data) {
+	buildStatusBarText(el : HTMLElement, data : RelationFile, relation : RelationSettings) {
+		el.show();
 
-		var statusText = this.settings.statusBarFormat;
+		var statusText = relation.statusFormat;
 		var regex = /(\$\{?([A-Za-z\-0-9]+)\}?)/;
 		var r = regex.exec(statusText);
 		while(r != null) {
@@ -87,33 +99,10 @@ export default class SnsvrnoProjects extends Plugin {
 		}
 
 		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		this.statusBarElement.setText(statusText);
-		// sets the click to open the file is that is what is desired
-		if (this.settings.statusBarBehavior == "OpenFile") this.statusBarElement.onclick = (_) => {
-			window.open(`obsidian://open?vault=${encodeURIComponent(this.app.vault.getName())}&file=${encodeURI(data.file.path)}`);
-		}
-		// highlights and uncollapses the item in the tree
-		if (this.settings.statusBarBehavior == "HighlightFile") this.statusBarElement.onclick = (_) => {
-
-			// hacky way to open the tree and highlight the current file.
-			this.app.workspace.leftSplit.expand();
-			const files = this.app.workspace.leftSplit.children[0].children[0];
-			files.tabHeaderEl.click();
-			while (!files.view.isAllCollapsed) files.view.collapseOrExpandAllEl.click();
-			// toggle all the others
-			const pathParts = data.file.parent.path.split("/");
-			while(pathParts.length > 0) {
-				const working = pathParts.join("/");
-				while(files.view.fileItems[working].collapsed) files.view.fileItems[working].toggleCollapsed();
-				pathParts.pop();
-			}
-			const ypos = files.view.fileItems[data.file.parent.path].el.getBoundingClientRect().y;
-			files.view.containerEl.children[1].scrollTo(0,ypos);
-
-		}
-		// adds the clickable CSS sa it looks right
-		if (this.settings.statusBarBehavior != "None") this.statusBarElement.addClass('mod-clickable');
-
+		el.setText(statusText);
+		if (relation.statusBehavior == StatusBehavior.OpenFile) el.onclick = () => statusBehaviorOpenFile(data.file);
+		if (relation.statusBehavior == StatusBehavior.HighlightFile) el.onclick = (_) => statusBehaviorHighlightFile(data.file)
+		if (relation.statusBehavior != StatusBehavior.None) el.addClass('mod-clickable');
 	}
 
 	onunload() {
@@ -129,62 +118,4 @@ export default class SnsvrnoProjects extends Plugin {
 	}
 }
 
-class SnsvrnoProjectsSettingTab extends PluginSettingTab {
-	plugin: SnsvrnoProjects;
 
-	constructor(app: App, plugin: SnsvrnoProjects) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		containerEl.createEl('h2', {text: 'General Settings'});
-
-		new Setting(containerEl)
-			.setName('Front Matter Matching')
-			.setDesc('What front matter value could be a project, and what would its value be.')
-			.addText(text => text.setPlaceholder('Front Matter')
-				.setValue(this.plugin.settings.frontmatterKey)
-				.onChange(async (value) => {
-					this.plugin.settings.frontmatterKey = value;
-					await this.plugin.saveSettings();
-				}))
-			.addText(text => text.setPlaceholder('Front Matter')
-				.setValue(this.plugin.settings.frontmatterValue)
-				.onChange(async (value) => {
-					this.plugin.settings.frontmatterValue = value;
-					await this.plugin.saveSettings();
-				}));
-
-		containerEl.createEl('h2', {text: 'Status Bar Settings'});
-
-		new Setting(containerEl)
-			.setName('Format')
-			.setDesc('Format for the status bar text.')
-			.addText(text => text.setPlaceholder('')
-				.setValue(this.plugin.settings.statusBarFormat)
-				.onChange(async (value) => {
-					this.plugin.settings.statusBarFormat = value;
-					await this.plugin.saveSettings();
-				})
-			);
-	
-		new Setting(containerEl)
-			.setName('Click Behavior')
-			.setDesc('What happens when you click the project name.')
-			.addDropdown(drop => drop
-				.addOption("None", "None")
-				.addOption("OpenFile", "Open Project File")
-				.addOption("HighlightFile", "Highlight Current File in Tree")
-				.setValue(this.plugin.settings.statusBarBehavior)
-				.onChange(async (value) => {
-					this.plugin.settings.statusBarBehavior = value;
-					await this.plugin.saveSettings();
-				}));
-
-	}
-}

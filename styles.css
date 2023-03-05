@@ -1,0 +1,12 @@
+.r-setting input {
+	width: 125px;
+}
+
+.header input {
+	width: 125px;
+	background: none;
+	border: none;
+	text-decoration: underline;
+	font-weight: bold;
+}
+
