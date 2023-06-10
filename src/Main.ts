@@ -7,6 +7,12 @@ import { RelationSettings } from './ds/Relation';
 import { RelationFile } from './ds/RelationFile';
 import { StatusBehavior, statusBehaviorOpenFile, statusBehaviorHighlightFile } from './ds/StatusBehavior';
 
+declare global {
+	interface Window {
+		sn:any,
+	}
+}
+
 export default class SnsvrnoRelations extends Plugin {
 	settings: SnsvrnoRelationsSettings;
 	statusBarElement: HTMLElement;
@@ -60,6 +66,12 @@ export default class SnsvrnoRelations extends Plugin {
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
 	}
 
+	addGlobalFunctions() {
+		window.sn = {
+			"test": function() {return "hello world from sn";},
+		}
+	}
+
 	sortStatusBar() {
 		if (this.statusBarElement.children.length == 1) return;
 
@@ -106,16 +118,82 @@ export default class SnsvrnoRelations extends Plugin {
 	}
 
 	onunload() {
-
+		this.destroyGlobalFunctions();
 	}
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.setupGlobalFunctions();
 	}
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		this.setupGlobalFunctions();
 	}
+
+	setupGlobalFunctions() {
+		window.sn = {};
+		this.settings.relations.forEach((rel : RelationSettings) => {
+			var functionName = rel.frontmatterKey.toLowerCase().replace("-","_") + "_"
+				+ rel.frontmatterValue.toLowerCase().replace("-","_");
+			window.sn[functionName] = (propName : String) => {
+				var file = app.workspace.getActiveFile();
+				if (file != null) {
+					var relation = this.getProjectFile(rel, file);
+					if (relation != null && propName != null) {
+						var parts = propName.split(".");
+						var returnValue : String = "";
+						var selected : any;
+						for (var i = 0; i < parts.length; i++) {
+							if (i == 0) {
+								if (parts[i] == "file") {
+									selected = relation.file;
+									continue;
+								}
+								else
+									selected = relation.frontmatter;
+							}
+							selected = selected[parts[i]];
+						}
+						return "" + selected;
+					}
+				}
+			};
+		});
+	}
+
+	destroyGlobalFunctions() {
+		window.sn = null;
+	}
+
+	getProjectFile(relation : RelationSettings, file : TFile) : RelationFile | null {
+
+		var fileOfInterest : Array<TFile> = [];
+
+		// gets the files of interest
+		// filters down the files to only those that share paths.
+		while (fileOfInterest.length > 0) fileOfInterest.pop(); // drains it
+		app.vault.getFiles().forEach((f) => { if(f.parent.path == file.parent.path.substring(0,f.parent.path.length)) fileOfInterest.push(f); });
+
+		var path = file.parent.path;
+		var parts = path.split("/");
+		while (parts.length > 0) {
+			var subPath = parts.join("/");
+			for (let i = 0; i < fileOfInterest.length; i++) {
+				// checks if we are in the same folder
+				if (fileOfInterest[i].parent.path == subPath) {
+					var metadata = app.metadataCache.getFileCache(fileOfInterest[i]);
+					if (metadata?.frontmatter && metadata.frontmatter[relation.frontmatterKey] == relation.frontmatterValue) {
+						return { frontmatter: metadata.frontmatter, file: fileOfInterest[i] };
+					}
+				}
+			}
+			parts.pop();
+		}
+
+		return null;
+	}
+
 }
 
 

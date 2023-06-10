@@ -35,6 +35,23 @@ export class SnsvrnoRelationsSettingTab extends PluginSettingTab {
 			this.plugin.settings.relations.push(newRelation);
 			this.display();
 		}));
+
+		this.containerEl.createEl('h2', {text: 'Available Functions'});
+		this.containerEl.createEl('span',
+			{text: 'Global functions that are available in all JS spaces. These are created by the definitions above.'})
+			.addClass("setting-item-description");
+		var div = this.containerEl.createDiv();
+		Object.entries(window.sn).forEach(([key, _]) => {
+			var line = div.createDiv();
+			line.addClass('snsvrno-function');
+
+			line.createEl("span", {text: key}).addClass("sn-f-name");
+			line.createEl("span", {text: "("}).addClass("sn-f-dec");
+			line.createEl("span", {text: "metadata"}).addClass("sn-f-param");
+			line.createEl("span", {text: ":"}).addClass("sn-f-dec");
+			line.createEl("span", {text:"string"}).addClass("sn-f-type");
+			line.createEl("span", {text: ")"}).addClass("sn-f-dec");
+		});
 	}
 
 	displayRelationHeader() : void {

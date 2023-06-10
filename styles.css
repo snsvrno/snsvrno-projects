@@ -10,3 +10,29 @@
 	font-weight: bold;
 }
 
+.snsvrno-function {
+	padding-left: 25px;
+	padding-top: 10px;
+}
+
+.sn-f-name {
+	font-weight: bold;
+	color: var(--code-function);
+}
+
+.sn-f-param {
+	text-decoration: underline;
+	color: var(--code-property)
+}
+
+.sn-f-type {
+	font-style: italic;
+	color: var(--code-value)
+}
+
+.sn-f-dec {
+	font-weight: lighter;
+	color: var(--code-comment);
+	padding: 0px 3px;
+}
+
