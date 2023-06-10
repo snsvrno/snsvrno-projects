@@ -23,7 +23,7 @@ projects/
 
 The frontmatter for the project then can define some project specific details
 
-```toml
+```yaml
 type: project
 project-name: Project 1
 project-code: pr1
@@ -51,8 +51,6 @@ These can be used to show information about the "parent" in the "children file".
 ![a screenshot showing the editor view of a file and a inline dataview command => `$= sn.type_project("file.path")`](imgs/dataview-editor.png)
 
 ![a screenshot of the same file as above but in view / rendered made, showing the file path for the project => projects/p1/P1.md](imgs/dataview-render.png)
-
-- 
 
 ### Building & Dev
 
